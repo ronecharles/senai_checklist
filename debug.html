@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Debug Checklist</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; }
+    .section { border: 1px solid #ccc; margin: 10px 0; padding: 10px; }
+    .log { background: #f0f0f0; padding: 10px; margin: 5px 0; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; }
+    button { margin: 5px; padding: 5px 10px; }
+    input { padding: 5px; margin: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Debug do Sistema de Checklist</h1>
+  
+  <div class="section">
+    <h3>1. Teste de Carregamento</h3>
+    <button onclick="testLoad()">Carregar Tarefas</button>
+    <div id="load-log" class="log"></div>
+  </div>
+  
+  <div class="section">
+    <h3>2. Teste de Salvamento</h3>
+    <input id="test-task" type="text" placeholder="Texto da tarefa" value="Tarefa de teste">
+    <button onclick="testSave()">Salvar Tarefa</button>
+    <div id="save-log" class="log"></div>
+  </div>
+  
+  <div class="section">
+    <h3>3. Teste Completo</h3>
+    <button onclick="testComplete()">Teste Completo</button>
+    <div id="complete-log" class="log"></div>
+  </div>
+  
+  <div class="section">
+    <h3>4. Conteúdo Atual do tasks.json</h3>
+    <button onclick="showCurrentTasks()">Mostrar Conteúdo</button>
+    <div id="current-content" class="log"></div>
+  </div>
+
+  <script>
+    function log(message, targetId) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logDiv = document.getElementById(targetId);
+      logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(`[${timestamp}] ${message}`);
+    }
+    
+    function testLoad() {
+      log('Iniciando teste de carregamento...', 'load-log');
+      $.getJSON('tasks.json?_t=' + new Date().getTime(), function(tasks) {
+        log(`Sucesso! Carregadas ${tasks.length} tarefas`, 'load-log');
+        log(`Dados: ${JSON.stringify(tasks)}`, 'load-log');
+      }).fail(function(xhr, status, error) {
+        log(`Erro: ${status} - ${error}`, 'load-log');
+        log(`Resposta: ${xhr.responseText}`, 'load-log');
+      });
+    }
+    
+    function testSave() {
+      const text = document.getElementById('test-task').value;
+      log(`Iniciando teste de salvamento com: "${text}"`, 'save-log');
+      
+      // Primeiro carrega as tarefas atuais
+      $.getJSON('tasks.json?_t=' + new Date().getTime(), function(tasks) {
+        log(`Tarefas atuais: ${tasks.length}`, 'save-log');
+        
+        // Adiciona nova tarefa
+        tasks.push({ text: text, done: false });
+        log(`Nova lista: ${JSON.stringify(tasks)}`, 'save-log');
+        
+        // Salva
+        $.ajax({
+          url: 'api/save.php',
+          method: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify(tasks),
+          success: function(response) {
+            log(`Sucesso! Resposta: ${JSON.stringify(response)}`, 'save-log');
+          },
+          error: function(xhr, status, error) {
+            log(`Erro: ${status} - ${error}`, 'save-log');
+            log(`Resposta: ${xhr.responseText}`, 'save-log');
+          }
+        });
+      }).fail(function() {
+        log('Erro ao carregar tarefas para salvamento', 'save-log');
+      });
+    }
+    
+    function testComplete() {
+      log('Iniciando teste completo...', 'complete-log');
+      
+      // 1. Carrega tarefas
+      $.getJSON('tasks.json?_t=' + new Date().getTime(), function(tasks) {
+        log(`1. Carregadas ${tasks.length} tarefas`, 'complete-log');
+        
+        // 2. Adiciona nova tarefa
+        const newTask = { text: 'Tarefa completa ' + new Date().toLocaleTimeString(), done: false };
+        tasks.push(newTask);
+        log(`2. Adicionada nova tarefa: ${newTask.text}`, 'complete-log');
+        
+        // 3. Salva
+        $.ajax({
+          url: 'api/save.php',
+          method: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify(tasks),
+          success: function(response) {
+            log(`3. Salvamento bem-sucedido: ${JSON.stringify(response)}`, 'complete-log');
+            
+            // 4. Recarrega para verificar
+            setTimeout(function() {
+              $.getJSON('tasks.json?_t=' + new Date().getTime(), function(newTasks) {
+                log(`4. Recarregamento: ${newTasks.length} tarefas`, 'complete-log');
+                log(`4. Última tarefa: ${JSON.stringify(newTasks[newTasks.length - 1])}`, 'complete-log');
+              });
+            }, 500);
+          },
+          error: function(xhr, status, error) {
+            log(`3. Erro no salvamento: ${status} - ${error}`, 'complete-log');
+          }
+        });
+      });
+    }
+    
+    function showCurrentTasks() {
+      log('Carregando conteúdo atual...', 'current-content');
+      $.getJSON('tasks.json?_t=' + new Date().getTime(), function(tasks) {
+        log(`Conteúdo atual (${tasks.length} tarefas):`, 'current-content');
+        log(JSON.stringify(tasks, null, 2), 'current-content');
+      }).fail(function(xhr, status, error) {
+        log(`Erro ao carregar: ${status} - ${error}`, 'current-content');
+      });
+    }
+  </script>
+</body>
+</html> 

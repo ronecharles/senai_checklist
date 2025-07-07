@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Teste Checklist</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+  <h1>Teste de Adição de Tarefas</h1>
+  
+  <div>
+    <input id="new-task" type="text" placeholder="Nova tarefa…">
+    <button id="add-btn">Adicionar</button>
+  </div>
+  
+  <div id="status"></div>
+  <ul id="task-list"></ul>
+  
+  <script>
+    $(function() {
+      // Carrega tarefas
+      function loadTasks() {
+        $.getJSON('tasks.json', function(tasks) {
+          $('#task-list').empty();
+          tasks.forEach((task, i) => {
+            $('#task-list').append(`
+              <li>
+                <input type="checkbox" ${task.done ? 'checked' : ''}>
+                <span>${task.text}</span>
+              </li>
+            `);
+          });
+          $('#status').text(`Carregadas ${tasks.length} tarefas`);
+        }).fail(function() {
+          $('#status').text('Erro ao carregar tarefas');
+        });
+      }
+      
+      // Adiciona tarefa
+      $('#add-btn').click(function() {
+        const text = $('#new-task').val().trim();
+        if (!text) return;
+        
+        // Carrega tarefas atuais
+        $.getJSON('tasks.json', function(tasks) {
+          // Adiciona nova tarefa
+          tasks.push({ text: text, done: false });
+          
+          // Salva
+          $.ajax({
+            url: 'api/save.php',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(tasks),
+            success: function(response) {
+              if (response.success) {
+                $('#status').text('Tarefa adicionada com sucesso!');
+                $('#new-task').val('');
+                loadTasks(); // Recarrega a lista
+              } else {
+                $('#status').text('Erro: ' + response.error);
+              }
+            },
+            error: function() {
+              $('#status').text('Erro ao salvar tarefa');
+            }
+          });
+        });
+      });
+      
+      // Carrega tarefas iniciais
+      loadTasks();
+    });
+  </script>
+</body>
+</html> 
