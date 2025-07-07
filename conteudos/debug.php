@@ -1,3 +1,5 @@
+<link rel="stylesheet" href="conteudos/styles.css">
+
 <div class="debug-container">
   <h2>🔧 Debug do Sistema</h2>
   <p>Esta seção mostra informações de debug do sistema em tempo real.</p>
@@ -22,6 +24,15 @@
     </div>
 
     <div class="debug-section">
+      <h3>🔍 Diagnóstico de Permissões</h3>
+      <div id="permissions-info" class="debug-log"></div>
+      <div class="permission-buttons">
+        <button id="check-permissions" class="debug-btn">Verificar Permissões</button>
+        <button id="fix-permissions" class="debug-btn" style="background: #ff9800;">Corrigir Permissões</button>
+      </div>
+    </div>
+
+    <div class="debug-section">
       <h3>📝 Log de Atividades</h3>
       <div id="debug-log" class="debug-log"></div>
       <button id="clear-log" class="debug-btn">Limpar Log</button>
@@ -33,6 +44,7 @@
         <button class="test-btn" onclick="testLoad()">Testar Carregamento</button>
         <button class="test-btn" onclick="testSave()">Testar Salvamento</button>
         <button class="test-btn" onclick="testAPI()">Testar API</button>
+        <button class="test-btn" onclick="testFileIntegrity()">Testar Integridade</button>
       </div>
     </div>
 
@@ -40,6 +52,22 @@
       <h3>📄 Conteúdo do tasks.json</h3>
       <div id="json-content" class="json-content"></div>
       <button id="refresh-json" class="debug-btn">Atualizar</button>
+    </div>
+
+    <div class="debug-section">
+      <h3>⚠️ Problemas Conhecidos</h3>
+      <div class="issues-list">
+        <div class="issue-item">
+          <strong>Arquivo sendo deletado:</strong>
+          <p>Se o tasks.json está sendo deletado e recriado, pode ser devido a:</p>
+          <ul>
+            <li>Problemas de permissões no diretório</li>
+            <li>Arquivo não gravável</li>
+            <li>Problemas de caminho relativo</li>
+            <li>Conflitos de acesso simultâneo</li>
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -126,7 +154,7 @@
   margin-bottom: 10px;
 }
 
-.test-buttons {
+.test-buttons, .permission-buttons {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -154,16 +182,54 @@
 #clear-log:hover {
   background: #ff5252;
 }
+
+.issues-list {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 6px;
+  padding: 15px;
+}
+
+.issue-item {
+  margin-bottom: 15px;
+}
+
+.issue-item:last-child {
+  margin-bottom: 0;
+}
+
+.issue-item strong {
+  color: #856404;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.issue-item ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.issue-item li {
+  margin: 4px 0;
+  color: #856404;
+}
 </style>
 
 <script>
 $(document).ready(function() {
   let debugLogElement = $('#debug-log');
+  let permissionsElement = $('#permissions-info');
   
   function addLog(message) {
     const timestamp = new Date().toLocaleTimeString();
     debugLogElement.append(`[${timestamp}] ${message}<br>`);
     debugLogElement.scrollTop(debugLogElement[0].scrollHeight);
+  }
+
+  function addPermissionsLog(message) {
+    const timestamp = new Date().toLocaleTimeString();
+    permissionsElement.append(`[${timestamp}] ${message}<br>`);
+    permissionsElement.scrollTop(permissionsElement[0].scrollHeight);
   }
 
   function checkSystemStatus() {
@@ -200,6 +266,35 @@ $(document).ready(function() {
     addLog('Sistema inicializado');
   }
 
+  function checkPermissions() {
+    addPermissionsLog('Verificando permissões do arquivo...');
+    
+    $.getJSON('check_permissions.php', function(data) {
+      addPermissionsLog('=== DIAGNÓSTICO DE PERMISSÕES ===');
+      addPermissionsLog(`Arquivo: ${data.diagnostic.file_path}`);
+      addPermissionsLog(`Existe: ${data.diagnostic.file_exists}`);
+      addPermissionsLog(`Legível: ${data.diagnostic.file_readable}`);
+      addPermissionsLog(`Gravável: ${data.diagnostic.file_writable}`);
+      addPermissionsLog(`Tamanho: ${data.diagnostic.file_size} bytes`);
+      addPermissionsLog(`Permissões: ${data.diagnostic.file_permissions}`);
+      addPermissionsLog(`Proprietário: ${data.diagnostic.file_owner}`);
+      addPermissionsLog(`Usuário PHP: ${data.diagnostic.php_user}`);
+      addPermissionsLog(`Diretório gravável: ${data.diagnostic.directory_writable}`);
+      
+      if (!data.diagnostic.file_writable) {
+        addPermissionsLog('⚠️ PROBLEMA: Arquivo não é gravável!');
+      }
+      if (!data.diagnostic.directory_writable) {
+        addPermissionsLog('⚠️ PROBLEMA: Diretório não é gravável!');
+      }
+      if (data.diagnostic.file_size === 0) {
+        addPermissionsLog('⚠️ PROBLEMA: Arquivo está vazio!');
+      }
+    }).fail(function() {
+      addPermissionsLog('❌ Erro ao verificar permissões');
+    });
+  }
+
   function updateJsonContent(data) {
     $('#json-content').html(JSON.stringify(data, null, 2));
   }
@@ -227,6 +322,7 @@ $(document).ready(function() {
       data: JSON.stringify(testData),
       success: function(response) {
         addLog('✅ Salvamento bem-sucedido');
+        addLog(`Tamanho do arquivo: ${response.file_size} bytes`);
         setTimeout(testLoad, 500);
       },
       error: function(xhr, status, error) {
@@ -251,10 +347,84 @@ $(document).ready(function() {
     });
   };
 
+  window.testFileIntegrity = function() {
+    addLog('Testando integridade do arquivo...');
+    
+    // Verifica se o arquivo existe e é válido
+    $.getJSON('tasks.json?_t=' + new Date().getTime(), function(data) {
+      if (Array.isArray(data)) {
+        addLog(`✅ Arquivo válido: ${data.length} tarefas`);
+        
+        // Verifica se há tarefas duplicadas
+        const texts = data.map(task => task.text);
+        const uniqueTexts = [...new Set(texts)];
+        if (texts.length !== uniqueTexts.length) {
+          addLog('⚠️ ATENÇÃO: Tarefas duplicadas encontradas');
+        }
+        
+        // Verifica estrutura das tarefas
+        const validTasks = data.filter(task => 
+          typeof task.text === 'string' && 
+          typeof task.done === 'boolean'
+        );
+        
+        if (validTasks.length !== data.length) {
+          addLog('⚠️ ATENÇÃO: Algumas tarefas têm estrutura inválida');
+        }
+        
+      } else {
+        addLog('❌ Arquivo não contém array válido');
+      }
+    }).fail(function() {
+      addLog('❌ Não foi possível ler o arquivo');
+    });
+  };
+
   // Eventos
   $('#clear-log').click(function() {
     debugLogElement.empty();
     addLog('Log limpo');
+  });
+
+  $('#check-permissions').click(function() {
+    permissionsElement.empty();
+    checkPermissions();
+  });
+
+  $('#fix-permissions').click(function() {
+    permissionsElement.empty();
+    addPermissionsLog('Iniciando correção automática de permissões...');
+    
+    $.getJSON('fix_permissions.php', function(data) {
+      addPermissionsLog('=== CORREÇÃO DE PERMISSÕES ===');
+      
+      if (data.success) {
+        addPermissionsLog('✅ Correção bem-sucedida!');
+      } else {
+        addPermissionsLog('❌ Correção falhou!');
+      }
+      
+      data.actions.forEach(function(action) {
+        addPermissionsLog(`📝 ${action}`);
+      });
+      
+      data.errors.forEach(function(error) {
+        addPermissionsLog(`❌ ${error}`);
+      });
+      
+      addPermissionsLog(`Arquivo: ${data.file_path}`);
+      addPermissionsLog(`Tamanho: ${data.file_size} bytes`);
+      addPermissionsLog(`Permissões: ${data.file_permissions}`);
+      
+      // Recarrega as permissões após a correção
+      setTimeout(function() {
+        addPermissionsLog('--- Verificando permissões após correção ---');
+        checkPermissions();
+      }, 1000);
+      
+    }).fail(function() {
+      addPermissionsLog('❌ Erro ao executar correção de permissões');
+    });
   });
 
   $('#refresh-json').click(function() {
@@ -268,6 +438,7 @@ $(document).ready(function() {
   // Inicialização
   addLog('Debug carregado');
   checkSystemStatus();
+  checkPermissions();
   
   // Atualizar status a cada 30 segundos
   setInterval(checkSystemStatus, 30000);

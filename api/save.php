@@ -22,14 +22,51 @@ if (!in_array($fileParam, $allowedFiles)) {
     echo json_encode(['error' => 'Arquivo não permitido']);
     exit;
 }
-$file = '../' . $fileParam;
+
+// Caminho absoluto para o arquivo
+$file = dirname(__DIR__) . DIRECTORY_SEPARATOR . $fileParam;
 
 error_log("Arquivo de destino: " . $file);
 
-// Verifica se o arquivo existe, se não, cria com array vazio
-if (!file_exists($file)) {
+// Verifica se o diretório existe e é gravável
+$directory = dirname($file);
+if (!is_dir($directory)) {
+    error_log("Diretório não existe: " . $directory);
+    http_response_code(500);
+    echo json_encode(['error' => 'Diretório não existe']);
+    exit;
+}
+
+if (!is_writable($directory)) {
+    error_log("Diretório não é gravável: " . $directory);
+    http_response_code(500);
+    echo json_encode(['error' => 'Diretório não é gravável']);
+    exit;
+}
+
+// Verifica se o arquivo existe
+$fileExists = file_exists($file);
+error_log("Arquivo existe: " . ($fileExists ? 'Sim' : 'Não'));
+
+// Se o arquivo não existe, cria com array vazio
+if (!$fileExists) {
     error_log("Arquivo não existe, criando: " . $file);
-    file_put_contents($file, '[]');
+    $initialData = json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    if (file_put_contents($file, $initialData) === false) {
+        error_log("Erro ao criar arquivo: " . $file);
+        http_response_code(500);
+        echo json_encode(['error' => 'Erro ao criar arquivo']);
+        exit;
+    }
+    error_log("Arquivo criado com sucesso: " . $file);
+}
+
+// Verifica se o arquivo é gravável
+if (!is_writable($file)) {
+    error_log("Arquivo não é gravável: " . $file);
+    http_response_code(500);
+    echo json_encode(['error' => 'Arquivo não é gravável']);
+    exit;
 }
 
 // Recebe o JSON bruto do POST
@@ -62,14 +99,65 @@ if (!is_array($data)) {
 
 error_log("Dados válidos, salvando " . count($data) . " itens");
 
+// Cria backup do arquivo atual antes de salvar
+$backupFile = $file . '.backup';
+if ($fileExists) {
+    $currentContent = file_get_contents($file);
+    if ($currentContent !== false) {
+        file_put_contents($backupFile, $currentContent);
+        error_log("Backup criado: " . $backupFile);
+    }
+}
+
 // Salva formatado
 $jsonData = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 if (file_put_contents($file, $jsonData) === false) {
     error_log("Erro ao gravar arquivo: " . $file);
+    
+    // Tenta restaurar backup se existir
+    if (file_exists($backupFile)) {
+        $backupContent = file_get_contents($backupFile);
+        if ($backupContent !== false) {
+            file_put_contents($file, $backupContent);
+            error_log("Backup restaurado devido a erro de salvamento");
+        }
+    }
+    
     http_response_code(500);
     echo json_encode(['error' => 'Erro ao gravar arquivo']);
     exit;
 }
 
+// Verifica se o arquivo foi salvo corretamente
+$savedContent = file_get_contents($file);
+if ($savedContent === false || json_decode($savedContent) === null) {
+    error_log("Arquivo salvo está corrompido, restaurando backup");
+    
+    // Restaura backup
+    if (file_exists($backupFile)) {
+        $backupContent = file_get_contents($backupFile);
+        if ($backupContent !== false) {
+            file_put_contents($file, $backupContent);
+            error_log("Backup restaurado devido a arquivo corrompido");
+        }
+    }
+    
+    http_response_code(500);
+    echo json_encode(['error' => 'Erro ao salvar arquivo - dados corrompidos']);
+    exit;
+}
+
+// Remove backup se tudo estiver ok
+if (file_exists($backupFile)) {
+    unlink($backupFile);
+    error_log("Backup removido após salvamento bem-sucedido");
+}
+
 error_log("Arquivo salvo com sucesso: " . $file);
-echo json_encode(['success' => true, 'message' => 'Dados salvos com sucesso', 'count' => count($data)]);
+echo json_encode([
+    'success' => true, 
+    'message' => 'Dados salvos com sucesso', 
+    'count' => count($data),
+    'file_size' => strlen($jsonData),
+    'file_path' => $file
+]);
