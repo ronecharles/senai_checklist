@@ -251,15 +251,25 @@
   </div>
 
   <script>
-    let currentContent = 'checklist';
-    let isLoading = false;
+    // Estado global da aplicação
+    window.AppState = {
+      currentContent: 'checklist',
+      isLoading: false,
+      checklistData: {
+        tasks: [],
+        isLoading: false,
+        isSaving: false,
+        lastLoaded: null
+      },
+      contentCache: {} // Cache para conteúdo carregado
+    };
 
     // Função para carregar conteúdo externo
     function loadContent(contentId) {
-      if (isLoading) return;
+      if (AppState.isLoading) return;
       
-      isLoading = true;
-      currentContent = contentId;
+      AppState.isLoading = true;
+      AppState.currentContent = contentId;
       
       // Mostrar loading
       $('#content-container').html('<div class="loading">Carregando...</div>');
@@ -268,25 +278,33 @@
       const title = $(`.menu-item[data-content="${contentId}"] .menu-item-title`).text();
       $('#contentTitle').text(title);
       
+      // Verificar se já temos o conteúdo em cache
+      if (AppState.contentCache[contentId]) {
+        $('#content-container').html(AppState.contentCache[contentId]).addClass('fade-in');
+        AppState.isLoading = false;
+        
+        // Se for checklist, restaurar estado
+        if (contentId === 'checklist') {
+          restoreChecklistState();
+        }
+        return;
+      }
+      
       // Carregar conteúdo via AJAX
       $.ajax({
         url: `conteudos/${contentId}.php`,
         method: 'GET',
         success: function(response) {
-          $('#content-container').html(response).addClass('fade-in');
-          isLoading = false;
+          // Armazenar no cache
+          AppState.contentCache[contentId] = response;
           
-          // Executar scripts carregados dinamicamente
-          const scripts = $('#content-container script');
-          scripts.each(function() {
-            if ($(this).attr('src')) {
-              // Script externo
-              $.getScript($(this).attr('src'));
-            } else {
-              // Script inline
-              eval($(this).html());
-            }
-          });
+          $('#content-container').html(response).addClass('fade-in');
+          AppState.isLoading = false;
+          
+          // Se for checklist, inicializar
+          if (contentId === 'checklist') {
+            initializeChecklist();
+          }
         },
         error: function(xhr, status, error) {
           $('#content-container').html(`
@@ -296,9 +314,23 @@
               <p><small>Erro: ${status} - ${error}</small></p>
             </div>
           `);
-          isLoading = false;
+          AppState.isLoading = false;
         }
       });
+    }
+
+    // Função para inicializar o checklist
+    function initializeChecklist() {
+      if (typeof window.ChecklistManager !== 'undefined') {
+        window.ChecklistManager.initialize();
+      }
+    }
+
+    // Função para restaurar estado do checklist
+    function restoreChecklistState() {
+      if (typeof window.ChecklistManager !== 'undefined') {
+        window.ChecklistManager.restoreState();
+      }
     }
 
     // Navegação do menu

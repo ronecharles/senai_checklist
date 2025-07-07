@@ -13,73 +13,86 @@
 </div>
 
 <script>
-// Script específico do checklist
-$(document).ready(function() {
-  const $list = $('#task-list');
-  const $statusMessage = $('#status-message');
-  const $debugInfo = $('#debug-info');
-  let isLoading = false;
-  let isSaving = false;
-  let currentTasks = [];
+// Gerenciador global do checklist
+window.ChecklistManager = {
+  $list: null,
+  $statusMessage: null,
+  $debugInfo: null,
+  currentTasks: [],
+  isLoading: false,
+  isSaving: false,
+  isInitialized: false,
 
   // Função para debug
-  function debugLog(message) {
+  debugLog: function(message) {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
-    $debugInfo.append(`${logMessage}<br>`);
+    if (this.$debugInfo) {
+      this.$debugInfo.append(`${logMessage}<br>`);
+    }
     console.log(logMessage);
-  }
+  },
 
   // Função para mostrar mensagens de status
-  function showStatus(message, type = 'info') {
-    $statusMessage.removeClass('error success').addClass(type).text(message).show();
-    debugLog(`Status: ${message} (${type})`);
-    if (type !== 'error') {
-      setTimeout(() => $statusMessage.hide(), 3000);
+  showStatus: function(message, type = 'info') {
+    if (this.$statusMessage) {
+      this.$statusMessage.removeClass('error success').addClass(type).text(message).show();
+      this.debugLog(`Status: ${message} (${type})`);
+      if (type !== 'error') {
+        setTimeout(() => this.$statusMessage.hide(), 3000);
+      }
     }
-  }
+  },
 
   // Carrega JSON e renderiza lista
-  function loadTasks() {
-    if (isLoading) {
-      debugLog('Tentativa de carregamento ignorada - já carregando');
+  loadTasks: function() {
+    if (this.isLoading) {
+      this.debugLog('Tentativa de carregamento ignorada - já carregando');
       return;
     }
-    isLoading = true;
-    debugLog('Iniciando carregamento de tarefas...');
+    this.isLoading = true;
+    this.debugLog('Iniciando carregamento de tarefas...');
     
     const timestamp = new Date().getTime();
     const url = `tasks.json?_t=${timestamp}`;
-    debugLog(`Fazendo requisição para: ${url}`);
+    this.debugLog(`Fazendo requisição para: ${url}`);
     
     $.getJSON(url, function(tasks) {
-      debugLog(`Resposta recebida: ${JSON.stringify(tasks).substring(0, 100)}...`);
+      this.debugLog(`Resposta recebida: ${JSON.stringify(tasks).substring(0, 100)}...`);
       
       if (Array.isArray(tasks)) {
-        currentTasks = tasks;
-        renderTasks(tasks);
-        showStatus(`Carregadas ${tasks.length} tarefas`, 'success');
-        debugLog(`Lista renderizada com ${tasks.length} tarefas`);
+        this.currentTasks = tasks;
+        this.renderTasks(tasks);
+        this.showStatus(`Carregadas ${tasks.length} tarefas`, 'success');
+        this.debugLog(`Lista renderizada com ${tasks.length} tarefas`);
+        
+        // Atualizar estado global
+        if (window.AppState) {
+          window.AppState.checklistData.tasks = tasks;
+          window.AppState.checklistData.lastLoaded = new Date().getTime();
+        }
       } else {
-        currentTasks = [];
-        renderTasks([]);
-        showStatus('Formato de dados inválido', 'error');
-        debugLog('Dados recebidos não são um array');
+        this.currentTasks = [];
+        this.renderTasks([]);
+        this.showStatus('Formato de dados inválido', 'error');
+        this.debugLog('Dados recebidos não são um array');
       }
-      isLoading = false;
-    }).fail(function(jqXHR, textStatus, errorThrown) {
-      debugLog(`Erro no carregamento: ${textStatus} - ${errorThrown}`);
+      this.isLoading = false;
+    }.bind(this)).fail(function(jqXHR, textStatus, errorThrown) {
+      this.debugLog(`Erro no carregamento: ${textStatus} - ${errorThrown}`);
       console.error('Erro ao carregar tarefas:', textStatus, errorThrown);
-      showStatus('Erro ao carregar tarefas. Verifique o console para mais detalhes.', 'error');
-      currentTasks = [];
-      renderTasks([]);
-      isLoading = false;
-    });
-  }
+      this.showStatus('Erro ao carregar tarefas. Verifique o console para mais detalhes.', 'error');
+      this.currentTasks = [];
+      this.renderTasks([]);
+      this.isLoading = false;
+    }.bind(this));
+  },
 
   // Renderiza as tarefas na interface
-  function renderTasks(tasks) {
-    $list.empty();
+  renderTasks: function(tasks) {
+    if (!this.$list) return;
+    
+    this.$list.empty();
     tasks.forEach((t, i) => {
       const $li = $(`
         <div class="task-item" data-index="${i}">
@@ -89,21 +102,21 @@ $(document).ready(function() {
         </div>
       `);
       if (t.done) $li.addClass('completed');
-      $list.append($li);
+      this.$list.append($li);
     });
-    updateListIndexes();
-  }
+    this.updateListIndexes();
+  },
 
   // Salva array no servidor
-  function saveTasks(tasks, reloadAfterSave = false) {
-    if (isSaving) {
-      debugLog('Tentativa de salvamento ignorada - já salvando');
+  saveTasks: function(tasks, reloadAfterSave = false) {
+    if (this.isSaving) {
+      this.debugLog('Tentativa de salvamento ignorada - já salvando');
       return;
     }
-    isSaving = true;
-    debugLog(`Salvando ${tasks.length} tarefas...`);
+    this.isSaving = true;
+    this.debugLog(`Salvando ${tasks.length} tarefas...`);
     const data = JSON.stringify(tasks);
-    debugLog(`Dados a serem enviados: ${data.substring(0, 100)}...`);
+    this.debugLog(`Dados a serem enviados: ${data.substring(0, 100)}...`);
     
     $.ajax({
       url: 'api/save.php',
@@ -111,114 +124,196 @@ $(document).ready(function() {
       contentType: 'application/json',
       data: data,
       success: function(response) {
-        debugLog(`Resposta do servidor: ${JSON.stringify(response)}`);
+        this.debugLog(`Resposta do servidor: ${JSON.stringify(response)}`);
         if (response.success) {
-          currentTasks = tasks;
-          showStatus('Tarefas salvas com sucesso', 'success');
+          this.currentTasks = tasks;
+          this.showStatus('Tarefas salvas com sucesso', 'success');
+          
+          // Atualizar estado global
+          if (window.AppState) {
+            window.AppState.checklistData.tasks = tasks;
+          }
+          
           if (reloadAfterSave) {
-            debugLog('Recarregando lista após salvamento...');
+            this.debugLog('Recarregando lista após salvamento...');
             setTimeout(function() {
-              loadTasks();
-            }, 200);
+              this.loadTasks();
+            }.bind(this), 200);
           }
         } else {
-          showStatus('Erro ao salvar: ' + (response.error || 'Erro desconhecido'), 'error');
+          this.showStatus('Erro ao salvar: ' + (response.error || 'Erro desconhecido'), 'error');
         }
-        isSaving = false;
-      },
+        this.isSaving = false;
+      }.bind(this),
       error: function(xhr, status, error) {
-        debugLog(`Erro na requisição: ${status} - ${error}`);
+        this.debugLog(`Erro na requisição: ${status} - ${error}`);
         console.error('Erro na requisição:', status, error);
         try {
           const response = JSON.parse(xhr.responseText);
-          showStatus('Erro ao salvar: ' + (response.error || 'Erro desconhecido'), 'error');
+          this.showStatus('Erro ao salvar: ' + (response.error || 'Erro desconhecido'), 'error');
         } catch (e) {
-          showStatus('Erro ao salvar. Verifique o console para mais detalhes.', 'error');
+          this.showStatus('Erro ao salvar. Verifique o console para mais detalhes.', 'error');
         }
-        isSaving = false;
-      }
+        this.isSaving = false;
+      }.bind(this)
     });
-  }
+  },
 
   // Atualiza os índices dos elementos da lista
-  function updateListIndexes() {
-    $list.children().each(function(index) {
+  updateListIndexes: function() {
+    if (!this.$list) return;
+    
+    this.$list.children().each(function(index) {
       $(this).attr('data-index', index);
     });
-    debugLog(`Índices atualizados: ${$list.children().length} itens`);
-  }
+    this.debugLog(`Índices atualizados: ${this.$list.children().length} itens`);
+  },
 
   // Adiciona nova tarefa
-  function addNewTask() {
+  addNewTask: function() {
     const text = $('#new-task').val().trim();
     if (!text) {
-      showStatus('Digite uma tarefa válida', 'error');
+      this.showStatus('Digite uma tarefa válida', 'error');
       return;
     }
     
-    debugLog(`Adicionando nova tarefa: "${text}"`);
+    this.debugLog(`Adicionando nova tarefa: "${text}"`);
     
     const newTask = { text, done: false };
-    const updatedTasks = [...currentTasks, newTask];
+    const updatedTasks = [...this.currentTasks, newTask];
     
-    renderTasks(updatedTasks);
+    this.renderTasks(updatedTasks);
     $('#new-task').val('');
     
-    saveTasks(updatedTasks);
+    this.saveTasks(updatedTasks);
+  },
+
+  // Inicializa o checklist
+  initialize: function() {
+    if (this.isInitialized) {
+      this.debugLog('Checklist já inicializado, restaurando estado...');
+      this.restoreState();
+      return;
+    }
+
+    this.debugLog('Inicializando checklist...');
+    
+    // Referências aos elementos
+    this.$list = $('#task-list');
+    this.$statusMessage = $('#status-message');
+    this.$debugInfo = $('#debug-info');
+    
+    // Verificar se temos dados em cache
+    if (window.AppState && window.AppState.checklistData.tasks.length > 0) {
+      this.debugLog('Restaurando tarefas do cache...');
+      this.currentTasks = window.AppState.checklistData.tasks;
+      this.renderTasks(this.currentTasks);
+      this.showStatus(`Restauradas ${this.currentTasks.length} tarefas do cache`, 'success');
+    } else {
+      this.debugLog('Carregando tarefas do servidor...');
+      this.loadTasks();
+    }
+
+    // Eventos
+    this.bindEvents();
+    
+    this.isInitialized = true;
+    this.debugLog('Checklist inicializado com sucesso');
+  },
+
+  // Restaura o estado do checklist
+  restoreState: function() {
+    this.debugLog('Restaurando estado do checklist...');
+    
+    // Restaurar referências aos elementos
+    this.$list = $('#task-list');
+    this.$statusMessage = $('#status-message');
+    this.$debugInfo = $('#debug-info');
+    
+    // Restaurar tarefas se existirem
+    if (this.currentTasks.length > 0) {
+      this.renderTasks(this.currentTasks);
+      this.debugLog(`Estado restaurado: ${this.currentTasks.length} tarefas`);
+    } else if (window.AppState && window.AppState.checklistData.tasks.length > 0) {
+      this.currentTasks = window.AppState.checklistData.tasks;
+      this.renderTasks(this.currentTasks);
+      this.debugLog(`Estado restaurado do cache: ${this.currentTasks.length} tarefas`);
+    } else {
+      this.debugLog('Nenhum estado para restaurar, carregando do servidor...');
+      this.loadTasks();
+    }
+    
+    // Rebind eventos
+    this.bindEvents();
+  },
+
+  // Vincula eventos
+  bindEvents: function() {
+    // Remover eventos existentes para evitar duplicação
+    $('#add-btn').off('click');
+    $('#new-task').off('keypress');
+    if (this.$list) {
+      this.$list.off('change', '.task-checkbox');
+      this.$list.off('click', '.task-delete-btn');
+    }
+
+    // Adicionar nova tarefa
+    $('#add-btn').on('click', function() {
+      this.debugLog('Botão adicionar clicado');
+      this.addNewTask();
+    }.bind(this));
+    
+    // Permitir adicionar com Enter
+    $('#new-task').on('keypress', function(e) {
+      if (e.which === 13) {
+        this.debugLog('Tecla Enter pressionada');
+        this.addNewTask();
+      }
+    }.bind(this));
+
+    // Delegação de eventos: toggle e delete
+    if (this.$list) {
+      this.$list.on('change', '.task-checkbox', function() {
+        const $taskItem = $(this).closest('.task-item');
+        const idx = +$taskItem.data('index');
+        this.debugLog(`Checkbox alterado no índice ${idx}, valor: ${this.checked}`);
+        
+        if (this.checked) {
+          $taskItem.addClass('completed');
+        } else {
+          $taskItem.removeClass('completed');
+        }
+        
+        if (this.currentTasks[idx]) {
+          this.currentTasks[idx].done = this.checked;
+          this.saveTasks(this.currentTasks);
+        } else {
+          this.debugLog(`Erro: tarefa no índice ${idx} não encontrada`);
+        }
+      }.bind(this));
+
+      this.$list.on('click', '.task-delete-btn', function() {
+        const $taskItem = $(this).closest('.task-item');
+        const idx = +$taskItem.data('index');
+        this.debugLog(`Botão deletar clicado no índice ${idx}`);
+        
+        if (this.currentTasks[idx]) {
+          this.currentTasks.splice(idx, 1);
+          this.renderTasks(this.currentTasks);
+          this.saveTasks(this.currentTasks);
+        } else {
+          this.debugLog(`Erro: tarefa no índice ${idx} não encontrada para deletar`);
+        }
+      }.bind(this));
+    }
   }
+};
 
-  // Inicialização
-  debugLog('Checklist carregado, inicializando...');
-  loadTasks();
-
-  // Adicionar nova tarefa
-  $('#add-btn').click(function() {
-    debugLog('Botão adicionar clicado');
-    addNewTask();
-  });
-  
-  // Permitir adicionar com Enter
-  $('#new-task').keypress(function(e) {
-    if (e.which === 13) {
-      debugLog('Tecla Enter pressionada');
-      addNewTask();
-    }
-  });
-
-  // Delegação de eventos: toggle e delete
-  $list.on('change', '.task-checkbox', function() {
-    const $taskItem = $(this).closest('.task-item');
-    const idx = +$taskItem.data('index');
-    debugLog(`Checkbox alterado no índice ${idx}, valor: ${this.checked}`);
-    
-    if (this.checked) {
-      $taskItem.addClass('completed');
-    } else {
-      $taskItem.removeClass('completed');
-    }
-    
-    if (currentTasks[idx]) {
-      currentTasks[idx].done = this.checked;
-      saveTasks(currentTasks);
-    } else {
-      debugLog(`Erro: tarefa no índice ${idx} não encontrada`);
-    }
-  });
-
-  $list.on('click', '.task-delete-btn', function() {
-    const $taskItem = $(this).closest('.task-item');
-    const idx = +$taskItem.data('index');
-    debugLog(`Botão deletar clicado no índice ${idx}`);
-    
-    if (currentTasks[idx]) {
-      currentTasks.splice(idx, 1);
-      renderTasks(currentTasks);
-      saveTasks(currentTasks);
-    } else {
-      debugLog(`Erro: tarefa no índice ${idx} não encontrada para deletar`);
-    }
-  });
-  
-  debugLog('Checklist inicializado com sucesso');
+// Inicializar quando o documento estiver pronto
+$(document).ready(function() {
+  // Se já temos o AppState, inicializar imediatamente
+  if (window.AppState && window.AppState.currentContent === 'checklist') {
+    window.ChecklistManager.initialize();
+  }
 });
 </script> 
